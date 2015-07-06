@@ -103,7 +103,7 @@ head(lh)
 #Competitive
 lh$Competitive <- ifelse(lh$LH == "Competitive", lh$cover, 
                          ifelse(lh$LH == "1C_1Gen",lh$cover * 1/2,
-                                ifelse(lh$LH == "5C_10Gen_2ST", lh$cover * 5/17,0)))
+                                ifelse(lh$LH == "5C_10G_2ST", lh$cover * 5/17,0)))
 head(lh)
 hist(lh$Competitive)
 min(lh$Competitive, na.rm = TRUE); max(lh$Competitive, na.rm = TRUE) 
@@ -143,6 +143,9 @@ min(lh$no_data, na.rm = TRUE); max(lh$no_data, na.rm = TRUE)
 
 # sum to life history
 head(lh)
+lh %>%
+  filter(ID == 252)
+
 lh_melt <- melt(lh[,-c(2:3)], id.vars = 1, variable.name = "LH")
 head(lh_melt)
 
@@ -151,6 +154,9 @@ lh2 <- lh_melt %>%
   group_by(ID, LH) %>%
   summarize(cover = sum(value, na.rm = TRUE))
 head(lh2)
+
+lh2 %>%
+  filter(ID == 252)
 
 lh3 <- dcast(lh2, ID~LH)
 head(lh3)
@@ -247,17 +253,133 @@ CWM <- CWM[,c(9,1:8)]
 head(CWM) 
 names(CWM)
 
+head(ias_fd$FRic)
+head(ias_fd$RaoQ)
+
+CWM$FRic <- ias_fd$FRic
+CWM$RaoQ <- ias_fd$RaoQ
+head(CWM)
+
+plot(CWM$FRic ~ CWM$RaoQ)
+
+CWM$ID <- as.numeric(CWM$ID)
+
 # check w/new Mouillot code (did I get code?)
+# CODE for FD
+# Hard to understand - problem in the dist[sp,sp] matrix multiplicatin
+# Using the code from dbFD in package "FD"
+
+#Reading species data file
+
+#data=read.csv(file="UniqueCorals + Traits_2029 sites_26Aug2014.csv")
+
+#lab.com=xtabs(Perc_cover2~Site+Coral,data=data)
+head(d)
+names(d)
+d2 <- d[,c(1,16:81)]
+d2 <- d2[order(d2$ID),]
+head(d2)
+
+d3 <- melt(d2, id.var = 1, variable.name = "coral", value.name = "cover")
+head(d3)
+
+lab.com=xtabs(cover ~ ID + coral,data=d3)
+head(lab.com)
+
+# Traits
+head(x2)
+#trait=data[,c(5,7:14)]
+#trait=unique(trait)
+#rownames(trait)=trait$Coral
+#trait=trait[,-1]
+trait <- x2
+dist.coral <- daisy(trait, metric = "gower", stand = TRUE)
+
+# Rao et FRIC
+# Based on relative cover
+x <- as.matrix(lab.com)
+S <- length(x[1, ])
+N <- length(x[, 1])
+total <- apply(x, 1, sum)
+relab=x/total
+head(relab)
+
+res=matrix(0,nrow=N,ncol=2)
+
+rownames(res)=rownames(lab.com)
+colnames(res)=c("nb_taxa","RAO")
+
+dist2<- as.matrix(dist.coral)
+
+
+# creation d'axes quanti avec PCoA
+# PCOA of coral axes based on traits 
+coral.pcoa=cmdscale(dist.coral, k = 4)
+
+plot(coral.pcoa)
+
+head(relab)
+
+#N is no. of sites (here, 444 in WA)
+for (i in 1:2)
+{
+  
+  #i=1
+  #sp collects species with >0% abundance at each site
+  sp<-which(relab[i,]!=0)
+  #sp<-which(relab[1,]!=0)
+  #sp
+  
+  #relab[1,"Acropora"] # relative percent cover of Acropora
+  #dist2["Acropora","Acropora"]
+  #head(dist2)
+  
+  # Rao's quadratic entropy (Q): sum of abundance-weighted distances
+  # matrix multiplication
+  d2ab <- relab[i,sp] %*% dist2[sp,sp] %*% relab[i,sp]
+  
+  
+  # Q expressed as an equivalent number of species
+  Q<- 1/(1-d2ab)
+  
+  res[i,2]=Q
+  
+  res[i,1]=length(sp)
+  
+}
+
+
+write.table(res,file="FD-Corals.txt"
+
+
 
 ##########################
 # create combined file by ID, merge back in after
 # d3 = sumCover, no_Genera
 # ssi = BleachSuscept
 # lh3 = life histories
+# CWM = traits, FD metrics
 
-coral_vars <- join(d3,ssi)
+coral_vars <- left_join(d3,ssi)
+coral_vars <- left_join(coral_vars, lh3[,-6])
+coral_vars <- left_join(coral_vars, CWM)
+
+#incorporate into final file
+head(d)
+names(d)
+d_clean <- d[,c(1:9,16:81,95:141)]
+
+coral_vars2 <- left_join(d_clean, coral_vars)
+names(coral_vars2)
+
+#plot(coral_vars2$sum_cover ~ coral_vars2$sumcover)
+
+coral_vars2 <- coral_vars2[,c(1:9,124:139,10:122)]
+
+plot(coral_vars2$BleachSuscept ~ coral_vars2$Competitive)
 
 
+setwd("/Users/emilydarling/Dropbox/1-On the go/Workshops/WA Corals/IAS workshop May 2014/Data/Corals to update_June2015")
+write.csv(coral_vars2, 
+          "rf_data_use_workshop_coralupdate_esd_6Jul2015.csv", row.names = FALSE)
 
-plot(coral_vars$sumcover ~ coral_vars$BleachSuscept)
-text(coral_vars$BleachSuscept,coral_vars$sumcover, labels = coral_vars$ID )
